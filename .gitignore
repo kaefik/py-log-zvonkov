@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+*.csv
+*.cfg
+
 # C extensions
 *.so
 
@@ -81,6 +84,8 @@ celerybeat-schedule
 
 # dotenv
 .env
+
+
 
 # virtualenv
 .venv
