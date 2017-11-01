@@ -1,6 +1,8 @@
 import csv
 import xlsxwriter
 from datetime import datetime, date, time
+import requests
+
 
 def getIntervalTime(t1H, t1M, t2H, t2M):
     """выделение отрезка времени, используется для определения текущего отбора во вкладку bad МПП"""
@@ -18,6 +20,7 @@ def getIntervalTime(t1H, t1M, t2H, t2M):
             return True
 
     return False
+
 
 class BaseDataTable:
     """ данные для хранения данных"""
@@ -183,8 +186,7 @@ class TableData:
         # --------------------------
 
 
-def xlsx(workbook, td, name_sheet="лог звонков",plan_unik_result_tel = 5):
-
+def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=5):
     # Create a workbook and add a worksheet.
     worksheet = workbook.add_worksheet(name_sheet)
 
@@ -220,12 +222,12 @@ def xlsx(workbook, td, name_sheet="лог звонков",plan_unik_result_tel =
 
     # заголовок таблицы
     worksheet.write(0, 0, "Выгружено: {}".format(datetime.now()))
-    worksheet.write(1, 0, "номер телефона",format_default)
-    worksheet.write(1, 1, "ФИО МПП",format_default)
-    worksheet.write(1, 2, "ФИО РГ",format_default)
-    worksheet.write(1, 3, "Кол-во\nуникальных\nзвонков",format_default)
-    worksheet.write(1, 4, "Кол-во\nрезультативных\nуникальных\nзвонков",format_default)
-    worksheet.write(1, 5, "Плановое\nкол-во\nрезультативных\nуникальных\nзвонков",format_default)
+    worksheet.write(1, 0, "номер телефона", format_default)
+    worksheet.write(1, 1, "ФИО МПП", format_default)
+    worksheet.write(1, 2, "ФИО РГ", format_default)
+    worksheet.write(1, 3, "Кол-во\nуникальных\nзвонков", format_default)
+    worksheet.write(1, 4, "Кол-во\nрезультативных\nуникальных\nзвонков", format_default)
+    worksheet.write(1, 5, "Плановое\nкол-во\nрезультативных\nуникальных\nзвонков", format_default)
 
     # Start from the first cell. Rows and columns are zero indexed.
     row = 2
@@ -238,19 +240,19 @@ def xlsx(workbook, td, name_sheet="лог звонков",plan_unik_result_tel =
             format = format_default
         else:
             format = format_red
-        worksheet.write(row, col, num_tel,format)
-        worksheet.write(row, col+1, td[num_tel].fio_manager,format)
-        worksheet.write(row, col + 2, td[num_tel].fio_rg,format)
-        worksheet.write(row, col + 3, len(td[num_tel].unik_tel),format)
-        worksheet.write(row, col + 4, kol_uniq_result_tel,format)
-        worksheet.write(row, col + 5, td[num_tel].plan_count_result_unik_tel,format)
+        worksheet.write(row, col, num_tel, format)
+        worksheet.write(row, col + 1, td[num_tel].fio_manager, format)
+        worksheet.write(row, col + 2, td[num_tel].fio_rg, format)
+        worksheet.write(row, col + 3, len(td[num_tel].unik_tel), format)
+        worksheet.write(row, col + 4, kol_uniq_result_tel, format)
+        worksheet.write(row, col + 5, td[num_tel].plan_count_result_unik_tel, format)
         # worksheet.write(row, col + 5, td[num_tel].result_unik_tel)
 
         row += 1
 
-    # # Write a total using a formula.
-    # worksheet.write(row, 0, 'Total')
-    # worksheet.write(row, 1, '=SUM(B1:B4)')
+        # # Write a total using a formula.
+        # worksheet.write(row, 0, 'Total')
+        # worksheet.write(row, 1, '=SUM(B1:B4)')
 
 
 def get_inputdata_list(csv_filename, datas=None):
@@ -316,7 +318,6 @@ def calc(table_data, input_data, plan_result_sec, begin_date, begin_time, end_da
     end_time_hour = int(end_time[0])
     end_time_minute = int(end_time[1])
 
-
     for num_tel in table_data:
         data_manager = input_data[num_tel]
         if data_manager == None:
@@ -342,12 +343,54 @@ def calc(table_data, input_data, plan_result_sec, begin_date, begin_time, end_da
         table_data[num_tel].total_sec = total_sec
         table_data[num_tel].total_call = total_call
 
-def run_log_zvonkov(begin_date,end_date,namefile_xlsx):
+
+def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
     # параметры программы
-    plan_result_zvonok = 20 # продолжительность результативного звонка
+    plan_result_zvonok = 20  # продолжительность результативного звонка
+    report_filename = "Reports.csv"   # файл куда сохраняются сырые данные лога звонков для последующей обработки
     # END параметры программы
 
-    # TODO: тут нужно реализовать скачивание данных в определенные даты из сайта данных
+    # скачивание данных в определенные даты из сайта данных
+
+    b_d = begin_date.split("-")
+    e_d = end_date.split("-")
+
+    begyearmonth = "{}-{}".format(b_d[0],b_d[1])
+    endyearmonth = "{}-{}".format(e_d[0],e_d[1])
+    begday = b_d[2]
+    endday = e_d[2]
+
+    print()
+
+    suri = "http://voip.2gis.local/cisco-stat/cdr.php?s=1&t=&order=dateTimeOrigination&sens=DESC&current_page=0" \
+           "&posted=1&current_page=0&fromstatsmonth={0}&tostatsmonth={1}&Period=Day&fromday=true" \
+           "&fromstatsday_sday={2}&fromstatsmonth_sday={3}&today=true&tostatsday_sday={4}&tostatsmonth_sday={5}" \
+           "&callingPartyNumber=&callingPartyNumbertype=1&originalCalledPartyNumber=%2B7" \
+           "&originalCalledPartyNumbertype=2&origDeviceName=&origDeviceNametype=1&destDeviceName=" \
+           "&destDeviceNametype=1&image16.x=27&image16.y=8&resulttype=min". \
+        format(begyearmonth, endyearmonth, begday, begyearmonth, endday, endyearmonth)
+
+    print(suri)
+    suri2 = "http://voip.2gis.local/cisco-stat/export_csv.php"
+    print(suri2)
+
+    try:
+        r = requests.get(suri)
+        print(r)
+        if r.status_code == 200:
+            session_cook = r.headers['Set-Cookie']
+            print(r.headers)
+            id_cookie = (session_cook.split(";"))[0]
+            header_session = {'user-agent': 'my-app/0.0.1', 'Cookie': id_cookie}
+            print(header_session)
+            r = requests.get(suri2, headers=header_session)
+            # print(r.text)
+            with open(report_filename, "w", encoding="utf8") as f:
+                f.write(r.text)
+    except requests.exceptions.ConnectionError:
+        print("Сервер недоступен")
+
+    # END - скачивание данных в определенные даты из сайта данных
 
     try:
         table_data = get_cfg_list("list-num-tel.cfg")
@@ -356,46 +399,36 @@ def run_log_zvonkov(begin_date,end_date,namefile_xlsx):
         return
 
     try:
-        input_data = get_inputdata_list("Report.csv", table_data)
+        input_data = get_inputdata_list(report_filename, table_data)
     except FileNotFoundError:
         print("Файл сырого лога не обнаружен")
         return
 
+    # print(input_data['15126'][0])
+
     workbook = xlsxwriter.Workbook(namefile_xlsx)
 
-    interval_time = (("13:00","13:29"),("13:30","13:59"),("14:00","14:29"),("14:30","14:59"),
-                     ("15:00","15:29"),("15:30","15:59"),("16:00","23:59"))
-    name_sheets = ("время 9-00 до 9-30","время 9-30 до 10-00","время 10-00 до 10-30","время 10-30 до 11-00",
-                   "время 11-00 до 11-30","время 11-30 до 12-00","время 12-00 до 23-59")
+    interval_time = (("13:00", "13:29"), ("13:30", "13:59"), ("14:00", "14:29"), ("14:30", "14:59"),
+                     ("15:00", "15:29"), ("15:30", "15:59"), ("16:00", "23:59"))
+    name_sheets = ("время 9-00 до 9-30", "время 9-30 до 10-00", "время 10-00 до 10-30", "время 10-30 до 11-00",
+                   "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
 
     for i in range(len(interval_time)):
         # блок расчета показателей в указанный промежуток времени
-        calc(table_data, input_data,plan_result_zvonok,begin_date,interval_time[i][0],end_date,interval_time[i][1])
-        xlsx(workbook, table_data,name_sheets[i],5)
+        calc(table_data, input_data, plan_result_zvonok, begin_date, interval_time[i][0], end_date, interval_time[i][1])
+        xlsx(workbook, table_data, name_sheets[i], 5)
         for k in table_data:
             table_data[k].clear_calc()
-        # END - блок расчета показателей в указанный промежуток времени
+            # END - блок расчета показателей в указанный промежуток времени
 
     workbook.close()
 
 
-    # for k in table_data:
-    #     print(table_data[k])
-
-    # for k in table_data:
-    #     for j in input_data[k]:
-    #         if (datetime(begin_year,begin_month,begin_day) <= j.datatimes) and (datetime(end_year,end_month,end_day,23,59)>=j.datatimes):
-    #             if (time(begin_time_hour,begin_time_minute) <= j.datatimes.time()) and (time(end_time_hour,end_time_minute)>=j.datatimes.time()):
-    #                 print(j.datatimes)
-
-
-
-
 if __name__ == "__main__":
     # для теста
-    begin_date = "2017-10-18"
-    end_date =  "2017-10-18"
+    begin_date = "2017-10-30"
+    end_date = "2017-11-01"
     # END для теста
-    namefile = "logs-{} по {}.xlsx".format(begin_date,end_date)
+    namefile = "logs-{} по {}.xlsx".format(begin_date, end_date)
 
-    run_log_zvonkov(begin_date,end_date,namefile)
+    run_log_zvonkov(begin_date, end_date, namefile)
