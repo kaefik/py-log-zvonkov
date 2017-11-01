@@ -2,7 +2,22 @@ import csv
 import xlsxwriter
 from datetime import datetime, date, time
 
+def getIntervalTime(t1H, t1M, t2H, t2M):
+    """выделение отрезка времени, используется для определения текущего отбора во вкладку bad МПП"""
+    curdate = datetime.now()
+    # print(curdate)
+    tekHour = curdate.hour
+    tekMinute = curdate.minute
+    # print(tekHour)
+    # print(tekMinute)
 
+    if (tekHour == t1H) or (tekHour == t2H):
+        # print("часы равны")
+        if (t1M <= tekMinute) and (t2M >= tekMinute):
+            # print("минуты в интервале")
+            return True
+
+    return False
 
 class BaseDataTable:
     """ данные для хранения данных"""
@@ -168,12 +183,9 @@ class TableData:
         # --------------------------
 
 
-def xlsx(td, filename,name_sheet="лог звонков",plan_unik_result_tel = 5):
+def xlsx(workbook, td, name_sheet="лог звонков",plan_unik_result_tel = 5):
 
-    # if not(isinstance(td,TableData)):
-    #     return
     # Create a workbook and add a worksheet.
-    workbook = xlsxwriter.Workbook(filename)
     worksheet = workbook.add_worksheet(name_sheet)
 
     # форматы для ячеек
@@ -204,30 +216,19 @@ def xlsx(td, filename,name_sheet="лог звонков",plan_unik_result_tel = 
     worksheet.set_column('E:E', 15)
     worksheet.set_column('F:F', 15)
 
-    worksheet.set_row(0, 60, format_default)
-
-
-    # self.fio_manager = fio_manager
-    # self.fio_rg = fio_rg
-    # self.total_sec = 0  # общая продолжительность звонков (в сек)
-    # self.total_call = 0  # общее кол-во звоноков
-    # self.count_result_call = 0  # кол-во результативных звоноков
-    # self.count_unik_tel = 0  # кол-во уникальных телефонных номеров
-    # self.count_result_unik_tel = 0  # кол-во уникальных результативных звоноков
-    # self.result_sec = 0  # продолжительность результативных звонков (в сек)
-    # self._unik_tel = list()  # список уникальных номеров телефонов
-    # self._result_unik_tel = list()  # список уникальных номеров телефонов по которым совершен результативный звонок
+    worksheet.set_row(1, 60, format_default)
 
     # заголовок таблицы
-    worksheet.write(0, 0, "номер телефона",format_default)
-    worksheet.write(0, 1, "ФИО МПП",format_default)
-    worksheet.write(0, 2, "ФИО РГ",format_default)
-    worksheet.write(0, 3, "Кол-во\nуникальных\nзвонков",format_default)
-    worksheet.write(0, 4, "Кол-во\nрезультативных\nуникальных\nзвонков",format_default)
-    worksheet.write(0, 5, "Плановое\nкол-во\nрезультативных\nуникальных\nзвонков",format_default)
+    worksheet.write(0, 0, "Выгружено: {}".format(datetime.now()))
+    worksheet.write(1, 0, "номер телефона",format_default)
+    worksheet.write(1, 1, "ФИО МПП",format_default)
+    worksheet.write(1, 2, "ФИО РГ",format_default)
+    worksheet.write(1, 3, "Кол-во\nуникальных\nзвонков",format_default)
+    worksheet.write(1, 4, "Кол-во\nрезультативных\nуникальных\nзвонков",format_default)
+    worksheet.write(1, 5, "Плановое\nкол-во\nрезультативных\nуникальных\nзвонков",format_default)
 
     # Start from the first cell. Rows and columns are zero indexed.
-    row = 1
+    row = 2
     col = 0
 
     # Iterate over the data and write it out row by row.
@@ -250,8 +251,6 @@ def xlsx(td, filename,name_sheet="лог звонков",plan_unik_result_tel = 
     # # Write a total using a formula.
     # worksheet.write(row, 0, 'Total')
     # worksheet.write(row, 1, '=SUM(B1:B4)')
-
-    workbook.close()
 
 
 def get_inputdata_list(csv_filename, datas=None):
@@ -343,12 +342,10 @@ def calc(table_data, input_data, plan_result_sec, begin_date, begin_time, end_da
         table_data[num_tel].total_sec = total_sec
         table_data[num_tel].total_call = total_call
 
-def run_log_zvonkov():
+def run_log_zvonkov(begin_date,end_date,namefile_xlsx):
     # параметры программы
-    calc_time = {}
-
+    plan_result_zvonok = 20 # продолжительность результативного звонка
     # END параметры программы
-
 
     # TODO: тут нужно реализовать скачивание данных в определенные даты из сайта данных
 
@@ -359,22 +356,31 @@ def run_log_zvonkov():
         return
 
     try:
-        input_data = get_inputdata_list("Report_cdr_2017-10-31.csv", table_data)
+        input_data = get_inputdata_list("Report.csv", table_data)
     except FileNotFoundError:
         print("Файл сырого лога не обнаружен")
         return
 
-    # блок расчета показателей в указанный промежуток времени
-    calc(table_data, input_data,20,"2017-10-18","13:30","2017-10-18","13:59")
-    xlsx(table_data,"log.xlsx","лог",5)
-    for k in table_data:
-        table_data[k].clear_calc()
-    # END - блок расчета показателей в указанный промежуток времени
+    workbook = xlsxwriter.Workbook(namefile_xlsx)
+
+    interval_time = (("13:00","13:29"),("13:30","13:59"),("14:00","14:29"),("14:30","14:59"),
+                     ("15:00","15:29"),("15:30","15:59"),("16:00","23:59"))
+    name_sheets = ("время 9-00 до 9-30","время 9-30 до 10-00","время 10-00 до 10-30","время 10-30 до 11-00",
+                   "время 11-00 до 11-30","время 11-30 до 12-00","время 12-00 до 23-59")
+
+    for i in range(len(interval_time)):
+        # блок расчета показателей в указанный промежуток времени
+        calc(table_data, input_data,plan_result_zvonok,begin_date,interval_time[i][0],end_date,interval_time[i][1])
+        xlsx(workbook, table_data,name_sheets[i],5)
+        for k in table_data:
+            table_data[k].clear_calc()
+        # END - блок расчета показателей в указанный промежуток времени
+
+    workbook.close()
 
 
-
-    for k in table_data:
-        print(table_data[k])
+    # for k in table_data:
+    #     print(table_data[k])
 
     # for k in table_data:
     #     for j in input_data[k]:
@@ -386,4 +392,10 @@ def run_log_zvonkov():
 
 
 if __name__ == "__main__":
-    run_log_zvonkov()
+    # для теста
+    begin_date = "2017-10-18"
+    end_date =  "2017-10-18"
+    # END для теста
+    namefile = "logs-{} по {}.xlsx".format(begin_date,end_date)
+
+    run_log_zvonkov(begin_date,end_date,namefile)
