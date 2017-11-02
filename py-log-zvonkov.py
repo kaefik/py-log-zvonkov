@@ -16,6 +16,17 @@ def getIntervalTime(t1H, t1M, t2H, t2M):
     return False
 
 
+def getIntervalTime2(t1, t2, hour_zone):
+    tmp = t1.split(":")
+    t1H = int(tmp[0]) - hour_zone
+    t1M = int(tmp[1])
+    tmp = t2.split(":")
+    t2H = int(tmp[0]) - hour_zone
+    t2M = int(tmp[1])
+    result = getIntervalTime(t1H, t1M, t2H, t2M)
+    return result
+
+
 class BaseDataTable:
     """ данные для хранения данных"""
 
@@ -164,13 +175,15 @@ class TableData:
         # --------------------------
 
 
-def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=5):
+def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=5, flag_bad=False, add_name=""):
+    """выгрузка в файл эксель"""
+    # flag_bad - флаг того выгружается ли в лист только плохие
     # Create a workbook and add a worksheet.
     # worksheet = workbook.add_worksheet(name_sheet)
 
     worksheet = workbook.get_worksheet_by_name(name_sheet)
 
-    print(worksheet)
+    # print(worksheet)
 
     # формат для выделения внимания
     format_red = workbook.add_format()
@@ -199,7 +212,7 @@ def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=
     worksheet.set_row(1, 65, format_default)
 
     # заголовок таблицы
-    worksheet.write(0, 0, "Выгружено: {}".format(datetime.now()))
+    worksheet.write(0, 0, "Плохие МПП за {}   - Выгружено: {}".format(add_name, datetime.now()))
     worksheet.write(1, 0, "номер телефона", format_default)
     worksheet.write(1, 1, "ФИО МПП", format_default)
     worksheet.write(1, 2, "ФИО РГ", format_default)
@@ -210,19 +223,33 @@ def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=
     # координаты откуда будет заполнять таблицу данными
     row = 2
     col = 0
-    for num_tel in td:
-        kol_uniq_result_tel = len(td[num_tel].result_unik_tel)
-        if kol_uniq_result_tel >= plan_unik_result_tel:
-            format = format_default
-        else:
+    if flag_bad:
+        for num_tel in td:
+            kol_uniq_result_tel = len(td[num_tel].result_unik_tel)
+            if kol_uniq_result_tel >= plan_unik_result_tel:
+                continue
             format = format_red
-        worksheet.write(row, col, num_tel, format)
-        worksheet.write(row, col + 1, td[num_tel].fio_manager, format)
-        worksheet.write(row, col + 2, td[num_tel].fio_rg, format)
-        worksheet.write(row, col + 3, len(td[num_tel].unik_tel), format)
-        worksheet.write(row, col + 4, kol_uniq_result_tel, format)
-        worksheet.write(row, col + 5, plan_unik_result_tel, format)
-        row += 1
+            worksheet.write(row, col, num_tel, format)
+            worksheet.write(row, col + 1, td[num_tel].fio_manager, format)
+            worksheet.write(row, col + 2, td[num_tel].fio_rg, format)
+            worksheet.write(row, col + 3, len(td[num_tel].unik_tel), format)
+            worksheet.write(row, col + 4, kol_uniq_result_tel, format)
+            worksheet.write(row, col + 5, plan_unik_result_tel, format)
+            row += 1
+    else:
+        for num_tel in td:
+            kol_uniq_result_tel = len(td[num_tel].result_unik_tel)
+            if kol_uniq_result_tel >= plan_unik_result_tel:
+                format = format_default
+            else:
+                format = format_red
+            worksheet.write(row, col, num_tel, format)
+            worksheet.write(row, col + 1, td[num_tel].fio_manager, format)
+            worksheet.write(row, col + 2, td[num_tel].fio_rg, format)
+            worksheet.write(row, col + 3, len(td[num_tel].unik_tel), format)
+            worksheet.write(row, col + 4, kol_uniq_result_tel, format)
+            worksheet.write(row, col + 5, plan_unik_result_tel, format)
+            row += 1
 
 
 def get_inputdata_list(csv_filename, datas=None):
@@ -315,6 +342,7 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
     plan_count_result_zvonok = 5
     plan_result_zvonok = 20  # продолжительность результативного звонка
     report_filename = "Reports.csv"  # файл куда сохраняются сырые данные лога звонков для последующей обработки
+    hour_zone = 4  # часовая разница с Новосибирском по сравнению с локальным временем
     # END параметры программы
 
     # скачивание данных в определенные даты из сайта данных
@@ -364,10 +392,11 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
                    "время 10-30 до 11-00",
                    "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
 
+    workbook.add_worksheet("BAD МПП")
+
     # создаем листы в книге экселя
     for i in range(len(name_sheets)):
         workbook.add_worksheet(name_sheets[i])
-        print(name_sheets[i])
 
     # блок расчета показателей в указанный промежуток времени
     calc(table_data, input_data, plan_result_zvonok, begin_date, interval_time[0][0], end_date, interval_time[0][1])
@@ -382,7 +411,15 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
         xlsx(workbook, table_data, name_sheets[i], plan_count_result_zvonok)
         for k in table_data:
             table_data[k].clear_calc()
-            # END - блок расчета показателей в указанный промежуток времени
+        # END - блок расчета показателей в указанный промежуток времени
+        if getIntervalTime2(interval_time[i][0], interval_time[i][1], hour_zone):
+            if not ((i == 1)):
+                calc(table_data, input_data, plan_result_zvonok, begin_date, interval_time[i - 1][0], end_date,
+                     interval_time[i - 1][1])
+                xlsx(workbook, table_data, "BAD МПП", plan_count_result_zvonok, True,
+                     "Плохие МПП за " + name_sheets[i - 1])
+                for k in table_data:
+                    table_data[k].clear_calc()
     workbook.close()
 
 
