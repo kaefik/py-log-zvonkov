@@ -1,6 +1,7 @@
 import csv
 import xlsxwriter
 from datetime import datetime, date, time
+from collections import OrderedDict
 import requests
 import argparse
 
@@ -178,18 +179,23 @@ class TableData:
 def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=5, flag_bad=False, add_name=""):
     """выгрузка в файл эксель"""
     # flag_bad - флаг того выгружается ли в лист только плохие
-    # Create a workbook and add a worksheet.
-    # worksheet = workbook.add_worksheet(name_sheet)
+
+    # sorted(td,key = )
+    # d_sorted_by_value = sorted(td, key=lambda x: x.values().fio_rg)
+
+
+    # dd =  sorted([(td[name].fio_rg, name) for name in td])
+    # print(dd)
+
 
     worksheet = workbook.get_worksheet_by_name(name_sheet)
 
-    # print(worksheet)
-
     # формат для выделения внимания
     format_red = workbook.add_format()
-    format_red.set_bold()
-    format_red.set_font_color('yellow')
-    format_red.set_bg_color('red')
+    format_red.set_font_color('red')
+    format_red.set_bg_color('white')
+    format_red.set_border()
+    format_red.set_text_wrap()
     format_red.set_align('vcenter')
     format_red.set_align('center')
 
@@ -277,7 +283,7 @@ def get_cfg_list(csv_filename):
         # создаем объект csv.reader для чтения csv-файла
         reader = csv.reader(csv_fd, delimiter=';')
         # это наш список, который будем возвращать
-        cfg_list = {}
+        cfg_list = OrderedDict()
         # обрабатываем csv-файл построчно
         for row in reader:
             try:
@@ -440,5 +446,5 @@ if __name__ == "__main__":
     # begin_date = "2017-10-30"
     # end_date = "2017-11-01"
     # END для теста
-    namefile = "logs-{} по {}.xlsx".format(begin_date, end_date)
+    namefile = "logs-{} - {}.xlsx".format(begin_date, end_date)
     run_log_zvonkov(begin_date, end_date, namefile)
