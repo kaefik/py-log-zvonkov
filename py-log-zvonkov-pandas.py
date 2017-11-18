@@ -1,5 +1,7 @@
 import pandas as pd
-import numpy as np
+import argparse
+from datetime import datetime, date, time
+# import numpy as np
 
 
 def get_data_from_server(begin_date, end_date):
@@ -41,66 +43,79 @@ def get_data_from_server(begin_date, end_date):
     return report_filename
 
 
-interval_time = (("13:00", "23:59"), ("13:00", "13:29"), ("13:30", "13:59"), ("14:00", "14:29"), ("14:30", "14:59"),
-                 ("15:00", "15:29"), ("15:30", "15:59"), ("16:00", "23:59"))
-name_sheets = ("лог звонков(итоговый)", "время 9-00 до 9-30", "время 9-30 до 10-00", "время 10-00 до 10-30",
-               "время 10-30 до 11-00",
-               "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
+# interval_time = (("13:00", "23:59"), ("13:00", "13:29"), ("13:30", "13:59"), ("14:00", "14:29"), ("14:30", "14:59"),
+#                  ("15:00", "15:29"), ("15:30", "15:59"), ("16:00", "23:59"))
+# name_sheets = ("лог звонков(итоговый)", "время 9-00 до 9-30", "время 9-30 до 10-00", "время 10-00 до 10-30",
+#                "время 10-30 до 11-00",
+#                "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
 
 
-def calc(begin_date, begin_time, end_date, end_time):
-    print("Start")
+def calc(begin_date, begin_time, end_date, end_time,filename,output_filename):
+    print("Start {} {} - {} {}".format(begin_date, begin_time, end_date, end_time))
     # загрузка информации лога звонков
     # columns = {0: "Calldate",1: "Source",2: "Destination",3:"Disconnect Time",4:"origCause_value",5:"destCause_value",6:"origDeviceName",7:"destDeviceName",8:"outpulsedCallingPartyNumber",9:"outpulsedCalledPartyNumber",10:"Duration"}
     columns = ["Calldate", "Source", "Destination", "Disconnect Time", "origCause_value",
                "destCause_value", "origDeviceName", "destDeviceName", "outpulsedCallingPartyNumber",
                "outpulsedCalledPartyNumber", "Duration", "No"]
-    dtypes = {"Calldate": "object", "Source": "str", "Destination": "object", "Disconnect Time": "object",
+    dtypes = {"Calldate": "object", "Source": "object", "Destination": "object", "Disconnect Time": "object",
               "origCause_value": "object",
               "destCause_value": "object", "origDeviceName": "object", "destDeviceName": "object",
               "outpulsedCallingPartyNumber": "object",
               "outpulsedCalledPartyNumber": "object", "Duration": "int64", "No": "object"}
-    log_zvonkov = pd.read_csv('report-2017-11-01-2017-11-16.csv', ';', header=None, names=columns, dtype=dtypes)
+    log_zvonkov = pd.read_csv(filename, ';', header=None, names=columns, dtype=dtypes)
     new_log = log_zvonkov[["Calldate", "Source", "Destination", "Duration"]]  # выбираем только нужные нам поля таблицы
-    # new_log.head()
-    # new_log.dtypes
-    # new_log.to_csv("logs.csv")
-
     # фильтрация по дате и времени
-    begin_date = "2017-11-02"
-    end_date = "2017-11-03"
-
-    begin_datetime = "{} 00:00:01".format(begin_date)
-    end_datetime = "{} 23:59:59".format(end_date)
-
+    begin_datetime = "{} {}".format(begin_date,begin_time)
+    end_datetime = "{} {}".format(end_date,end_time)
     filter_date = (new_log["Calldate"] > begin_datetime) & (new_log["Calldate"] < end_datetime)
     new_log = new_log[filter_date]
-
     # END фильтрация по дате
 
     # загрузка информации о принадлежности номеров телефонов к конкретным менеджерам
-    columns = ["Source", "FioMPP", "FioRg", "Plan_result_unik_zvonok", ""]
-    dtypes = {"Source": "str", "FioMPP": "object", "FioRg": "object", "Plan_result_unik_zvonok": "int64"}
+    columns = ["Source", "FioMPP", "FioRg", "Plan_result_unik_zvonok"]
+    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan_result_unik_zvonok": "int64"}
     list_cfg = pd.read_csv('list-num-tel.cfg', ';', header=None, names=columns, dtype=dtypes)
-    list_cfg = list_cfg[columns[:-1]]  # отсекаем последний столбец
-    list_cfg.head()
-
+    # ---
+    columns = ["Source", "FioMPP", "FioRg"]
+    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan_result_unik_zvonok": "int64"}
+    list_cfg2 = pd.read_csv('list-num-tel.cfg', ';', header=None, names=columns, dtype=dtypes, index_col=0)
+    # END загрузка информации о принадлежности номеров телефонов к конкретным менеджерам
+    # print(list_cfg)
     data = new_log.merge(list_cfg, on="Source", how="left")
-    data.head()
+    # print(data)
+    # data.to_csv("data.csv")
     data = data.dropna()  # удаление отсутствующих данных,таким образом отфильтровали номера которые нас не интересуют
-    data.to_csv("logs-fil.csv")
-    data.head()
+    # data.to_csv("data-dropna.csv")
 
     # выборка общее кол-во набранных телефонов каждым из сотрудников
-    group = data["Destination"].groupby(data["Source"])
-    group.count()
+    group = data["Destination"].groupby([data["Source"]])
     # END выборка общее кол-во набранных телефонов каждым из сотрудников
-
     # подсчет уникальных звонков
-    group.nunique()
+    result_unuque = group.nunique()
+    result_unuque.name = "Unique tel"
     # END подсчет уникальных звонков
-    print("Done")
-    return
+
+    # выборка общее кол-во набранных телефонов каждым из сотрудников по результативным звонкам
+    data_result_duration = data[data["Duration"] >= 20]
+    group = data_result_duration["Destination"].groupby(data_result_duration["Source"])
+    # END выборка общее кол-во набранных телефонов каждым из сотрудников по результативным звонкам
+
+    # подсчет уникальных результативных звонков
+    result_unuque_result = group.nunique()
+    result_unuque_result.name = "Unique result tel"
+    # END подсчет уникальных результативных звонков
+
+    # объединение двух результов группировки
+    result_frame = pd.concat([result_unuque, result_unuque_result], axis=1)
+    result_frame.index = result_frame.index.astype("int64")
+    # END объединение двух результов группировки
+
+    # объединение результов группировки с итоговой таблицей
+    result_frame2 = list_cfg2.join(result_frame)
+    result_frame2 = result_frame2.fillna(0)
+    # END объединение результов группировки с итоговой таблицей
+    print("Done {} {} - {} {}".format(begin_date, begin_time, end_date, end_time))
+    return result_frame2
 
 
 def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
@@ -111,18 +126,33 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
     hour_zone = 4  # часовая разница с Новосибирском по сравнению с локальным временем
     # END параметры программы
 
-    report_filename = get_data_from_server(begin_date, end_date)
-    print(report_filename)
+    try:
+        report_filename = get_data_from_server(begin_date, end_date)
+    except Exception:
+        # для теста
+        report_filename = "report-2017-11-01-2017-11-16.csv"
+        # END для теста
 
     # workbook = xlsxwriter.Workbook(namefile_xlsx)
-    interval_time = (("13:00", "23:59"), ("13:00", "13:29"), ("13:30", "13:59"), ("14:00", "14:29"), ("14:30", "14:59"),
-                     ("15:00", "15:29"), ("15:30", "15:59"), ("16:00", "23:59"))
+    interval_time = (("13:00:00", "23:59:59"), ("13:00:00", "13:29:59"), ("13:30:00", "13:59:59"), ("14:00:00", "14:29:59"), ("14:30:00", "14:59:59"),
+                     ("15:00:00", "15:29:59"), ("15:30:00", "15:59:59"), ("16:00:00", "23:59:59"))
     name_sheets = ("лог звонков(итоговый)", "время 9-00 до 9-30", "время 9-30 до 10-00", "время 10-00 до 10-30",
                    "время 10-30 до 11-00",
                    "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
 
-    calc(begin_date, interval_time[0][0], end_date, interval_time[0][1])
+    writer = pd.ExcelWriter(namefile)
+    # result_frame2.to_excel(writer,"лог звонков")
 
+
+
+    for i in range(0,len(interval_time)):
+        output_filename = "logs-{} {} - {} {}.xlsx".format(begin_date, interval_time[i][0], end_date, interval_time[i][1])
+        result_log = calc(begin_date, interval_time[i][0], end_date, interval_time[i][1],filename = report_filename,output_filename=namefile_xlsx)
+        # result_log.to_csv(output_filename)
+        # result_log = result_log[["Source","FioMPP","FioRg","Unique tel","Unique result tel"]]
+        result_log.to_excel(writer, name_sheets[i])
+
+    writer.save()
     # workbook.add_worksheet("BAD МПП")
 
     # # создаем листы в книге экселя
@@ -169,8 +199,8 @@ if __name__ == "__main__":
     print("begin_date = ", begin_date)
     print("end_date = ", end_date)
     # для теста
-    # begin_date = "2017-10-30"
-    # end_date = "2017-11-01"
+    begin_date = "2017-11-10"
+    end_date = "2017-11-10"
     # END для теста
     namefile = "logs-{} - {}.xlsx".format(begin_date, end_date)
     run_log_zvonkov(begin_date, end_date, namefile)
