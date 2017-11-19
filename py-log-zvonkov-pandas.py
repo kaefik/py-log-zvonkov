@@ -1,8 +1,33 @@
 import pandas as pd
 import argparse
+import xlsxwriter
 from datetime import datetime, date, time
-# import numpy as np
 
+
+# служебные функции
+def getIntervalTime(t1H, t1M, t2H, t2M):
+    """выделение отрезка времени, используется для определения текущего отбора во вкладку bad МПП"""
+    curdate = datetime.now()
+    tekHour = curdate.hour
+    tekMinute = curdate.minute
+    if (tekHour == t1H) or (tekHour == t2H):
+        if (t1M <= tekMinute) and (t2M >= tekMinute):
+            return True
+    return False
+
+
+def getIntervalTime2(t1, t2, hour_zone):
+    tmp = t1.split(":")
+    t1H = int(tmp[0]) - hour_zone
+    t1M = int(tmp[1])
+    tmp = t2.split(":")
+    t2H = int(tmp[0]) - hour_zone
+    t2M = int(tmp[1])
+    result = getIntervalTime(t1H, t1M, t2H, t2M)
+    return result
+
+
+# END служебные функции
 
 def get_data_from_server(begin_date, end_date):
     # скачивание данных в определенные даты из сайта данных, возвращает имя файла с полным путем
@@ -43,17 +68,9 @@ def get_data_from_server(begin_date, end_date):
     return report_filename
 
 
-# interval_time = (("13:00", "23:59"), ("13:00", "13:29"), ("13:30", "13:59"), ("14:00", "14:29"), ("14:30", "14:59"),
-#                  ("15:00", "15:29"), ("15:30", "15:59"), ("16:00", "23:59"))
-# name_sheets = ("лог звонков(итоговый)", "время 9-00 до 9-30", "время 9-30 до 10-00", "время 10-00 до 10-30",
-#                "время 10-30 до 11-00",
-#                "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
-
-
-def calc(begin_date, begin_time, end_date, end_time,filename,output_filename):
+def calc(begin_date, begin_time, end_date, end_time, filename, output_filename):
     print("Start {} {} - {} {}".format(begin_date, begin_time, end_date, end_time))
     # загрузка информации лога звонков
-    # columns = {0: "Calldate",1: "Source",2: "Destination",3:"Disconnect Time",4:"origCause_value",5:"destCause_value",6:"origDeviceName",7:"destDeviceName",8:"outpulsedCallingPartyNumber",9:"outpulsedCalledPartyNumber",10:"Duration"}
     columns = ["Calldate", "Source", "Destination", "Disconnect Time", "origCause_value",
                "destCause_value", "origDeviceName", "destDeviceName", "outpulsedCallingPartyNumber",
                "outpulsedCalledPartyNumber", "Duration", "No"]
@@ -65,19 +82,19 @@ def calc(begin_date, begin_time, end_date, end_time,filename,output_filename):
     log_zvonkov = pd.read_csv(filename, ';', header=None, names=columns, dtype=dtypes)
     new_log = log_zvonkov[["Calldate", "Source", "Destination", "Duration"]]  # выбираем только нужные нам поля таблицы
     # фильтрация по дате и времени
-    begin_datetime = "{} {}".format(begin_date,begin_time)
-    end_datetime = "{} {}".format(end_date,end_time)
+    begin_datetime = "{} {}".format(begin_date, begin_time)
+    end_datetime = "{} {}".format(end_date, end_time)
     filter_date = (new_log["Calldate"] > begin_datetime) & (new_log["Calldate"] < end_datetime)
     new_log = new_log[filter_date]
     # END фильтрация по дате
 
     # загрузка информации о принадлежности номеров телефонов к конкретным менеджерам
-    columns = ["Source", "FioMPP", "FioRg", "Plan_result_unik_zvonok"]
-    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan_result_unik_zvonok": "int64"}
+    columns = ["Source", "FioMPP", "FioRg", "Plan result unik zvonok"]
+    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan result unik zvonok": "int64"}
     list_cfg = pd.read_csv('list-num-tel.cfg', ';', header=None, names=columns, dtype=dtypes)
     # ---
-    columns = ["Source", "FioMPP", "FioRg"]
-    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan_result_unik_zvonok": "int64"}
+    columns = ["Source", "FioMPP", "FioRg", "Plan result unik zvonok"]
+    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan result unik zvonok": "int64"}
     list_cfg2 = pd.read_csv('list-num-tel.cfg', ';', header=None, names=columns, dtype=dtypes, index_col=0)
     # END загрузка информации о принадлежности номеров телефонов к конкретным менеджерам
     # print(list_cfg)
@@ -118,6 +135,89 @@ def calc(begin_date, begin_time, end_date, end_time,filename,output_filename):
     return result_frame2
 
 
+def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=5, flag_bad=False, add_name=""):
+    """выгрузка в файл эксель"""
+    # flag_bad - флаг того выгружается ли в лист только плохие
+
+    worksheet = workbook.get_worksheet_by_name(name_sheet)
+
+    # формат для выделения внимания
+    format_red = workbook.add_format()
+    format_red.set_font_color('red')
+    format_red.set_bg_color('white')
+    format_red.set_border()
+    format_red.set_text_wrap()
+    format_red.set_align('vcenter')
+    format_red.set_align('center')
+
+    #  формат по умолчанию
+    format_default = workbook.add_format()
+    format_default.set_font_color('black')
+    format_default.set_bg_color('white')
+    format_default.set_border()
+    format_default.set_text_wrap()
+    format_default.set_align('vcenter')
+    format_default.set_align('center')
+
+    worksheet.set_column('A:A', 10)
+    worksheet.set_column('B:B', 30)
+    worksheet.set_column('C:C', 30)
+    worksheet.set_column('D:D', 15)
+    worksheet.set_column('E:E', 15)
+    worksheet.set_column('F:F', 15)
+
+    worksheet.set_row(1, 65, format_default)
+
+    # заголовок таблицы
+    worksheet.write(0, 0, "Плохие МПП за {}   - Выгружено: {}".format(add_name, datetime.now()))
+    worksheet.write(1, 0, "номер телефона", format_default)
+    worksheet.write(1, 1, "ФИО МПП", format_default)
+    worksheet.write(1, 2, "ФИО РГ", format_default)
+    worksheet.write(1, 3, "Кол-во\nуникальных\nзвонков", format_default)
+    worksheet.write(1, 4, "Кол-во\nрезультативных\nуникальных\nзвонков", format_default)
+    worksheet.write(1, 5, "Плановое\nкол-во\nрезультативных\nуникальных\nзвонков\nв получасе", format_default)
+
+    # координаты откуда будет заполнять таблицу данными
+    row = 2
+    col = 0
+    if flag_bad:
+        for num_tel in td.index:
+            fio_manager = (td["FioMPP"])[num_tel]
+            fio_rg = (td["FioRg"])[num_tel]
+            unik_tel = (td["Unique tel"])[num_tel]
+            kol_uniq_result_tel = (td["Unique result tel"])[num_tel]
+            # plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel]
+            if kol_uniq_result_tel >= plan_unik_result_tel:
+                continue
+            format = format_red
+            worksheet.write(row, col, num_tel, format)
+            worksheet.write(row, col + 1, fio_manager, format)
+            worksheet.write(row, col + 2, fio_rg, format)
+            worksheet.write(row, col + 3, unik_tel, format)
+            worksheet.write(row, col + 4, kol_uniq_result_tel, format)
+            worksheet.write(row, col + 5, plan_unik_result_tel, format)
+            row += 1
+    else:
+        for num_tel in td.index:
+            fio_manager = (td["FioMPP"])[num_tel]
+            fio_rg = (td["FioRg"])[num_tel]
+            unik_tel = (td["Unique tel"])[num_tel]
+            kol_uniq_result_tel = (td["Unique result tel"])[num_tel]
+            # plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel]
+            if kol_uniq_result_tel >= plan_unik_result_tel:
+                format = format_default
+            else:
+                format = format_red
+            worksheet.write(row, col, num_tel, format)
+            worksheet.write(row, col + 1, fio_manager, format)
+            worksheet.write(row, col + 2, fio_rg, format)
+            worksheet.write(row, col + 3, unik_tel, format)
+            worksheet.write(row, col + 4, kol_uniq_result_tel, format)
+            worksheet.write(row, col + 5, plan_unik_result_tel, format)
+            row += 1
+    return True
+
+
 def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
     # параметры программы
     plan_count_result_zvonok = 5
@@ -133,55 +233,35 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
         report_filename = "report-2017-11-01-2017-11-16.csv"
         # END для теста
 
-    # workbook = xlsxwriter.Workbook(namefile_xlsx)
-    interval_time = (("13:00:00", "23:59:59"), ("13:00:00", "13:29:59"), ("13:30:00", "13:59:59"), ("14:00:00", "14:29:59"), ("14:30:00", "14:59:59"),
-                     ("15:00:00", "15:29:59"), ("15:30:00", "15:59:59"), ("16:00:00", "23:59:59"))
+    interval_time = (
+        ("13:00:00", "23:59:59"), ("13:00:00", "13:29:59"), ("13:30:00", "13:59:59"), ("14:00:00", "14:29:59"),
+        ("14:30:00", "14:59:59"),
+        ("15:00:00", "15:29:59"), ("15:30:00", "15:59:59"), ("16:00:00", "23:59:59"))
     name_sheets = ("лог звонков(итоговый)", "время 9-00 до 9-30", "время 9-30 до 10-00", "время 10-00 до 10-30",
                    "время 10-30 до 11-00",
                    "время 11-00 до 11-30", "время 11-30 до 12-00", "время 12-00 до 23-59")
 
-    writer = pd.ExcelWriter(namefile)
-    # result_frame2.to_excel(writer,"лог звонков")
+    workbook = xlsxwriter.Workbook(namefile)
+    # создаем листы в книге экселя
+    workbook.add_worksheet("BAD МПП")
+    for i in range(len(name_sheets)):
+        workbook.add_worksheet(name_sheets[i])
 
+    result_log = calc(begin_date, interval_time[0][0], end_date, interval_time[0][1], filename=report_filename,
+                      output_filename=namefile_xlsx)
+    xlsx(workbook, result_log, name_sheets[0], plan_unik_result_tel=plan_count_result_zvonok * 5)
 
-
-    for i in range(0,len(interval_time)):
-        output_filename = "logs-{} {} - {} {}.xlsx".format(begin_date, interval_time[i][0], end_date, interval_time[i][1])
-        result_log = calc(begin_date, interval_time[i][0], end_date, interval_time[i][1],filename = report_filename,output_filename=namefile_xlsx)
-        # result_log.to_csv(output_filename)
-        # result_log = result_log[["Source","FioMPP","FioRg","Unique tel","Unique result tel"]]
-        result_log.to_excel(writer, name_sheets[i])
-
-    writer.save()
-    # workbook.add_worksheet("BAD МПП")
-
-    # # создаем листы в книге экселя
-    # for i in range(len(name_sheets)):
-    #     workbook.add_worksheet(name_sheets[i])
-
-    # # блок расчета показателей в указанный промежуток времени
-    # calc(table_data, input_data, plan_result_zvonok, begin_date, interval_time[0][0], end_date, interval_time[0][1])
-    # xlsx(workbook, table_data, name_sheets[0], plan_count_result_zvonok * 5)
-    # for k in table_data:
-    #     table_data[k].clear_calc()
-    # # END - блок расчета показателей в указанный промежуток времени
-    #
-    # for i in range(1, len(interval_time)):
-    #     # блок расчета показателей в указанный промежуток времени
-    #     calc(table_data, input_data, plan_result_zvonok, begin_date, interval_time[i][0], end_date, interval_time[i][1])
-    #     xlsx(workbook, table_data, name_sheets[i], plan_count_result_zvonok)
-    #     for k in table_data:
-    #         table_data[k].clear_calc()
-    #     # END - блок расчета показателей в указанный промежуток времени
-    #     if getIntervalTime2(interval_time[i][0], interval_time[i][1], hour_zone):
-    #         if not ((i == 1)):
-    #             calc(table_data, input_data, plan_result_zvonok, begin_date, interval_time[i - 1][0], end_date,
-    #                  interval_time[i - 1][1])
-    #             xlsx(workbook, table_data, "BAD МПП", plan_count_result_zvonok, True,
-    #                  "Плохие МПП за " + name_sheets[i - 1])
-    #             for k in table_data:
-    #                 table_data[k].clear_calc()
-    # # workbook.close()
+    for i in range(1, len(interval_time)):
+        result_log = calc(begin_date, interval_time[i][0], end_date, interval_time[i][1], filename=report_filename,
+                          output_filename=namefile_xlsx)
+        xlsx(workbook, result_log, name_sheets[i], plan_count_result_zvonok)
+        if getIntervalTime2(interval_time[i][0], interval_time[i][1], hour_zone):
+            if not ((i == 1)):
+                result_log = calc(begin_date, interval_time[i - 1][0], end_date, interval_time[i - 1][1],
+                                  filename=report_filename, output_filename=namefile_xlsx)
+                xlsx(workbook, result_log, "BAD МПП", plan_count_result_zvonok,
+                     True, "Плохие МПП за " + name_sheets[i - 1])
+    workbook.close()
     return
 
 
@@ -199,8 +279,8 @@ if __name__ == "__main__":
     print("begin_date = ", begin_date)
     print("end_date = ", end_date)
     # для теста
-    begin_date = "2017-11-10"
-    end_date = "2017-11-10"
+    # begin_date = "2017-11-02"
+    # end_date = "2017-11-02"
     # END для теста
     namefile = "logs-{} - {}.xlsx".format(begin_date, end_date)
     run_log_zvonkov(begin_date, end_date, namefile)
