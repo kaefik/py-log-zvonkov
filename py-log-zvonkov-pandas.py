@@ -101,7 +101,7 @@ def calc(begin_date, begin_time, end_date, end_time, filename, output_filename):
     # print(list_cfg)
     data = new_log.merge(list_cfg, on="Source", how="left")
     # print(data)
-    # data.to_csv("data.csv")
+    data.to_csv("data.csv")
     data = data.dropna()  # удаление отсутствующих данных,таким образом отфильтровали номера которые нас не интересуют
     # data.to_csv("data-dropna.csv")
 
@@ -223,7 +223,7 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx):
     # параметры программы
     plan_count_result_zvonok = 5
     plan_result_zvonok = 20  # продолжительность результативного звонка
-    report_filename = "Reports.csv"  # файл куда сохраняются сырые данные лога звонков для последующей обработки
+    # report_filename = "Reports.csv"  # файл куда сохраняются сырые данные лога звонков для последующей обработки
     hour_zone = 4  # часовая разница с Новосибирском по сравнению с локальным временем
     # END параметры программы
 
