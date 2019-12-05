@@ -5,6 +5,8 @@ import requests
 import os
 from datetime import datetime, date, time
 
+import pdb
+
 
 # служебные функции
 def getIntervalTime(t1H, t1M, t2H, t2M):
@@ -53,6 +55,7 @@ def get_data_from_server(begin_date, end_date):
         report_filename = "{}-log-zvonkov.csv".format(begin_date)
     else:
         report_filename = "report-{}-{}.csv".format(begin_date, end_date)
+    """
     suri = "http://voip.2gis.local/cisco-stat/cdr.php?s=1&t=&order=dateTimeOrigination&sens=DESC&current_page=0" \
            "&posted=1&current_page=0&fromstatsmonth={0}&tostatsmonth={1}&Period=Day&fromday=true" \
            "&fromstatsday_sday={2}&fromstatsmonth_sday={3}&today=true&tostatsday_sday={4}&tostatsmonth_sday={5}" \
@@ -60,7 +63,17 @@ def get_data_from_server(begin_date, end_date):
            "&originalCalledPartyNumbertype=2&origDeviceName=&origDeviceNametype=1&destDeviceName=" \
            "&destDeviceNametype=1&image16.x=27&image16.y=8&resulttype=min". \
         format(begyearmonth, endyearmonth, begday, begyearmonth, endday, endyearmonth)
-    suri2 = "http://voip.2gis.local/cisco-stat/export_csv.php"
+    """
+    suri = "http://10.54.16.20/cisco-stat/cdr.php?s=1&t=&order=dateTimeOrigination&sens=DESC&current_page=0" \
+           "&posted=1&current_page=0&fromstatsmonth={0}&tostatsmonth={1}&Period=Day&fromday=true" \
+           "&fromstatsday_sday={2}&fromstatsmonth_sday={3}&today=true&tostatsday_sday={4}&tostatsmonth_sday={5}" \
+           "&callingPartyNumber=&callingPartyNumbertype=1&originalCalledPartyNumber=%2B7" \
+           "&originalCalledPartyNumbertype=2&origDeviceName=&origDeviceNametype=1&destDeviceName=" \
+           "&destDeviceNametype=1&image16.x=27&image16.y=8&resulttype=min". \
+        format(begyearmonth, endyearmonth, begday, begyearmonth, endday, endyearmonth)
+    #suri2 = "http://voip.2gis.local/cisco-stat/export_csv.php"
+    suri2 = "http://10.54.16.20/cisco-stat/export_csv.php"
+    print(suri)
     try:
         r = requests.get(suri)
         if r.status_code == 200:
@@ -144,9 +157,11 @@ def calc(begin_date, begin_time, end_date, end_time, filename, output_filename, 
     return result_frame2
 
 
-def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=5, flag_bad=False, add_name=""):
+def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel="", flag_bad=False, add_name="", flag_polchasa=True, unique_result_tel_mean=0, unique_result_tel_mean_group=None):
     """выгрузка в файл эксель"""
     # flag_bad - флаг того выгружается ли в лист только плохие
+    # flag_polchasa - флаг, того что выгружается результат в полчаса, то есть плановое кол-во результативных уникальных которое находится в 
+    # файле конфигурации делится на 5 
 
     worksheet = workbook.get_worksheet_by_name(name_sheet)
 
@@ -158,6 +173,19 @@ def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=
     format_red.set_text_wrap()
     format_red.set_align('vcenter')
     format_red.set_align('center')
+
+    # формат для средних значений по звонкам
+    format_mean = workbook.add_format()
+    format_mean.set_font_color('black')
+    format_mean.set_bg_color('white')
+    format_mean.set_border()
+    format_mean.set_text_wrap()
+    format_mean.set_align('vcenter')
+    format_mean.set_align('center')
+    format_mean.set_text_wrap(True)
+    format_mean.set_num_format("0.00")
+    
+
 
     #  формат по умолчанию
     format_default = workbook.add_format()
@@ -195,7 +223,10 @@ def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=
             fio_rg = (td["FioRg"])[num_tel]
             unik_tel = (td["Unique tel"])[num_tel]
             kol_uniq_result_tel = (td["Unique result tel"])[num_tel]
-            # plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel]
+            if flag_polchasa:
+                plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel] // 5
+            else:
+                plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel]
             if kol_uniq_result_tel >= plan_unik_result_tel:
                 continue
             format = format_red
@@ -212,7 +243,10 @@ def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=
             fio_rg = (td["FioRg"])[num_tel]
             unik_tel = (td["Unique tel"])[num_tel]
             kol_uniq_result_tel = (td["Unique result tel"])[num_tel]
-            # plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel]
+            if flag_polchasa:
+                plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel] // 5
+            else:
+                plan_unik_result_tel = (td["Plan result unik zvonok"])[num_tel]            
             if kol_uniq_result_tel >= plan_unik_result_tel:
                 format = format_default
             else:
@@ -224,13 +258,52 @@ def xlsx(workbook, td, name_sheet="лог звонков", plan_unik_result_tel=
             worksheet.write(row, col + 4, kol_uniq_result_tel, format)
             worksheet.write(row, col + 5, plan_unik_result_tel, format)
             row += 1
+
+        # вывод средних значений по группам продаж и филиалу
+        
+        worksheet.set_column("I:I", 30)
+        worksheet.set_column("J:J", 30)
+        
+        worksheet.set_row(1,100)
+        worksheet.set_row(5,40)
+        
+
+        
+        worksheet.write(1, 8, "Среднее кол-во результир. уникальных звонков по филиалу", format_mean)
+        #pdb.set_trace()
+
+        worksheet.write(2, 8, unique_result_tel_mean, format_mean)
+
+        worksheet.write(5, 8, "Среднее зн-ние результир. уникальных звонков по группам", format_mean)
+        worksheet.write(6, 8, "ФИО РГ", format_mean)
+        worksheet.write(6, 9, "Сред. зн-ние", format_mean)
+        row = 1
+
+        if (unique_result_tel_mean_group is not None):
+            for k, item in unique_result_tel_mean_group.items():
+                worksheet.write(6+row, 8, k, format_mean)
+                worksheet.write(6+row, 9, item, format_mean)
+                row = row + 1
+            #pdb.set_trace()
+
+
+
+
     return True
 
-
-def run_log_zvonkov(begin_date, end_date, namefile_xlsx, name_file_cfg):
+def run_log_zvonkov_new(begin_date, end_date, namefile_xlsx, name_file_cfg):
     # параметры программы
-    plan_count_result_zvonok = 5
-    plan_result_zvonok = 20  # продолжительность результативного звонка
+    print(name_file_cfg)
+    # загрузка информации о принадлежности номеров телефонов к конкретным менеджерам
+    columns = ["Source", "FioMPP", "FioRg", "Plan result unik zvonok"]
+    dtypes = {"Source": "object", "FioMPP": "object", "FioRg": "object", "Plan result unik zvonok": "int64"}
+    list_cfg = pd.read_csv(name_file_cfg, ';', header=None, names=columns, dtype=dtypes)
+    
+    #print(list_cfg["Plan result unik zvonok"][15])
+
+    
+    plan_count_result_zvonok = 25
+    #plan_result_zvonok = 20  # продолжительность результативного звонка
     # report_filename = "Reports.csv"  # файл куда сохраняются сырые данные лога звонков для последующей обработки
     hour_zone = 4  # часовая разница с Новосибирском по сравнению с локальным временем
     # END параметры программы
@@ -257,25 +330,60 @@ def run_log_zvonkov(begin_date, end_date, namefile_xlsx, name_file_cfg):
     for i in range(len(name_sheets)):
         workbook.add_worksheet(name_sheets[i])
 
-    result_log = calc(begin_date, interval_time[0][0], end_date, interval_time[0][1], filename=report_filename,
-                      output_filename=namefile_xlsx, name_file_cfg_tel=name_file_cfg)
-    xlsx(workbook, result_log, name_sheets[0], plan_unik_result_tel=plan_count_result_zvonok * 5)
+    #print(result_log)
+
+    kol_pol4asa = 0 # кол-во пройденных получасов которое используется для средних значений в итоговом листе
 
     for i in range(1, len(interval_time)):
         result_log = calc(begin_date, interval_time[i][0], end_date, interval_time[i][1], filename=report_filename,
                           output_filename=namefile_xlsx, name_file_cfg_tel=name_file_cfg)
-        xlsx(workbook, result_log, name_sheets[i], plan_count_result_zvonok)
+        #print(result_log)
+        # удаление строк где не было звонков МПП 
+        result_log_non_null = result_log[result_log["Unique tel"]!=0]
+        print(result_log_non_null)
+        if  result_log_non_null.empty:
+            continue
+
+        unique_result_tel_mean = result_log_non_null["Unique result tel"].mean()
+        unique_result_tel_mean_group = result_log_non_null.groupby("FioRg").mean()["Unique result tel"]
+        """
+        else:
+            unique_result_tel_mean = 0
+            unique_result_tel_mean_group = None
+        """
+
+        #pdb.set_trace()
+        xlsx(workbook, result_log, name_sheets[i], plan_count_result_zvonok // 5, flag_polchasa=True, unique_result_tel_mean = unique_result_tel_mean, unique_result_tel_mean_group=unique_result_tel_mean_group)
         if getIntervalTime2(interval_time[i][0], interval_time[i][1], hour_zone):
             if not ((i == 1)):
                 result_log = calc(begin_date, interval_time[i - 1][0], end_date, interval_time[i - 1][1],
                                   filename=report_filename, output_filename=namefile_xlsx,
                                   name_file_cfg_tel=name_file_cfg)
-                xlsx(workbook, result_log, "BAD МПП", plan_count_result_zvonok,
-                     True, "Плохие МПП за " + name_sheets[i - 1])
+                xlsx(workbook, result_log, "BAD МПП", plan_count_result_zvonok // 5,
+                     True, "Плохие МПП за " + name_sheets[i - 1], flag_polchasa=True)
+
+                kol_pol4asa = i
+
+    #pdb.set_trace()   
+
+    print("Кол-во получасов: ", kol_pol4asa)
+
+    result_log = calc(begin_date, interval_time[0][0], end_date, interval_time[0][1], filename=report_filename,
+                    output_filename=namefile_xlsx, name_file_cfg_tel=name_file_cfg)
+    result_log_non_null = result_log[result_log["Unique tel"]!=0]
+    #print(result_log_non_null)
+    if  not result_log_non_null.empty  and kol_pol4asa !=0:
+        kol_pol4asa = kol_pol4asa - 1
+        unique_result_tel_mean = result_log_non_null["Unique result tel"].mean()/kol_pol4asa
+        unique_result_tel_mean_group = result_log_non_null.groupby("FioRg").mean()["Unique result tel"]/kol_pol4asa
+    else:
+        unique_result_tel_mean = result_log_non_null["Unique result tel"].mean()
+        unique_result_tel_mean_group = result_log_non_null.groupby("FioRg").mean()["Unique result tel"]
+    xlsx(workbook, result_log, name_sheets[0], list_cfg, flag_polchasa=False, unique_result_tel_mean = unique_result_tel_mean, unique_result_tel_mean_group=unique_result_tel_mean_group)
+
     workbook.close()
     del_file(report_filename)
     return
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -295,8 +403,10 @@ if __name__ == "__main__":
     print("begin_date = ", begin_date)
     print("end_date = ", end_date)
     # для теста
-    # begin_date = "2017-11-02"
-    # end_date = "2017-11-02"
+    #begin_date = str(datetime.now().date().year)+"-"+str(datetime.now().date().month)+"-01"
+    #end_date = str(datetime.now().date().year)+"-"+str(datetime.now().date().month)+"-01"
+    print("begin_date = ", begin_date)
+    print("end_date = ", end_date)     
     # END для теста
     namefile = "logs-{} - {}.xlsx".format(begin_date, end_date)
-    run_log_zvonkov(begin_date, end_date, namefile, name_file_cfg)
+    run_log_zvonkov_new(begin_date, end_date, namefile, name_file_cfg)
